@@ -62,9 +62,11 @@ size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
 void machine_print(Machine *machine) {
     printf("head: %zu, ", machine->head);
     for(size_t i = 0; i < machine->size; i++) {
-        printf("%d -> ", machine->data[i]);
+        if(i != machine->size-1)
+            printf("%d -> ", machine->data[i]);
+        else
+            printf("%d\n", machine->data[i]);        
     }
-    printf("\n");
 }
 
 int main(int argc, char **argv) {
