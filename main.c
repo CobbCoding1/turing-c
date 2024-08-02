@@ -6,7 +6,6 @@
 typedef struct {
     bool *data;
     size_t size;
-    
     size_t head;    
 } Machine;
     
@@ -15,18 +14,25 @@ typedef enum {
     STAY = 0,
     RIGHT = 1,
 } Direction;
+    
+typedef struct {
+    bool write;
+    Direction dir;
+    size_t next;
+} State;
 
 typedef struct {
     bool expected;
-    
-    bool write_yes;
-    Direction dir_yes;    
-    size_t next_yes;    
-    
-    bool write_no;
-    Direction dir_no;        
-    size_t next_no;
+    State yes;
+    State no;
 } Instruction;
+    
+typedef struct {
+    Machine *machine;
+    Instruction *insts;
+    size_t inst_count;
+    size_t cur;
+} Program;
     
 void machine_randomize(Machine *machine) {
     srand(time(NULL));
@@ -35,15 +41,21 @@ void machine_randomize(Machine *machine) {
     }
 }
     
-size_t machine_execute(Machine *machine, Instruction *inst) {
+size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
+    if(machine->head >= machine->size) return inst_count; 
+    
     if(machine->data[machine->head] == inst->expected) {
-        machine->data[machine->head] = inst->write_yes;
-        machine->head += inst->dir_yes;
-        return inst->next_yes;
+        machine->data[machine->head] = inst->yes.write;
+        if(machine->head == 0 && inst->yes.dir < 0) return inst_count;
+        machine->head += inst->yes.dir;
+        
+        return inst->yes.next;
     }
-    machine->data[machine->head] = inst->write_no;    
-    machine->head += inst->dir_no;    
-    return inst->next_no;       
+    machine->data[machine->head] = inst->no.write;    
+    if(machine->head == 0 && inst->no.dir < 0) return inst_count;    
+    machine->head += inst->no.dir;    
+    
+    return inst->no.next;       
 }
     
 void machine_print(Machine *machine) {
@@ -55,23 +67,26 @@ void machine_print(Machine *machine) {
 }
 
 int main() {
+    Program program = {0};
     Machine machine = {0};
-    machine.size = 8;
+    machine.size = 16;
     machine.data = malloc(sizeof(bool)*machine.size);
     machine_randomize(&machine);
+    program.machine = &machine;            
     
     Instruction insts[] = {
         // expected value, value if true, direction if true, next if true,
         // value if false, direction if false, next if false
-        {0, 1, RIGHT, 2, 0, RIGHT, 0},
+        {0, {1, RIGHT, 2}, {0, RIGHT, 0}},
         {NULL},
     };
-    size_t inst_count = sizeof(insts)/sizeof(*insts);
-    size_t cur = 0;
-    machine_print(&machine);    
-    while(cur <= inst_count-1) {
-        cur = machine_execute(&machine, &insts[cur]);    
-        machine_print(&machine);        
+    program.inst_count = sizeof(insts)/sizeof(*insts);
+    program.insts = insts;    
+    
+    machine_print(program.machine);    
+    while(program.cur <= program.inst_count-1) {
+        program.cur = machine_execute(program.machine, &program.insts[program.cur], program.inst_count);    
+        machine_print(program.machine);        
     }
     return 0;
 }
