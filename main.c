@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
@@ -66,14 +67,22 @@ void machine_print(Machine *machine) {
     printf("\n");
 }
 
-int main() {
+int main(int argc, char **argv) {
     Program program = {0};
     Machine machine = {0};
-    machine.size = 16;
-    machine.data = malloc(sizeof(bool)*machine.size);
-    machine_randomize(&machine);
-    program.machine = &machine;            
+    if(argc == 1) {
+        machine.size = 3;
+        machine.data = malloc(sizeof(bool)*machine.size);                
+        machine_randomize(&machine);
+    } else {
+        machine.size = strlen(argv[1]);
+        machine.data = malloc(sizeof(bool)*machine.size);        
+        for(size_t i = 0; i < machine.size; i++) {
+            machine.data[i] = argv[1][i] - '0';
+        }
+    }
     
+    program.machine = &machine;            
     Instruction insts[] = {
         // expected value, value if true, direction if true, next if true,
         // value if false, direction if false, next if false
