@@ -6,7 +6,12 @@
 
 typedef struct {
     bool *data;
-    size_t size;
+    size_t count;
+    size_t capacity;
+} Tape;
+    
+typedef struct {
+    Tape tape;
     size_t head;    
 } Machine;
     
@@ -35,37 +40,46 @@ typedef struct {
     size_t cur;
 } Program;
     
-void machine_randomize(Machine *machine) {
+void tape_randomize(Tape *tape) {
     srand(time(NULL));
-    for(size_t i = 0; i < machine->size; i++) {
-        machine->data[i] = rand() % 2;
+    for(size_t i = 0; i < tape->capacity; i++) {
+        tape->data[i] = rand() % 2;
     }
 }
     
 size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
-    if(machine->head >= machine->size) return inst_count; 
+    if(machine->head >= machine->tape.capacity) {
+        Tape tape = {0};
+        tape.capacity = machine->tape.capacity*2;
+        tape.data = calloc(tape.capacity, sizeof(bool));
+        memcpy(tape.data, machine->tape.data, sizeof(bool)*machine->tape.capacity);
+        free(machine->tape.data);
+        machine->tape = tape;
+    }
     
-    if(machine->data[machine->head] == inst->expected) {
-        machine->data[machine->head] = inst->yes.write;
+    if(machine->tape.data[machine->head] == inst->expected) {
+        machine->tape.data[machine->head] = inst->yes.write;
         if(machine->head == 0 && inst->yes.dir < 0) return inst_count;
         machine->head += inst->yes.dir;
+        if(machine->head > machine->tape.count) machine->tape.count = machine->head;        
         
         return inst->yes.next;
     }
-    machine->data[machine->head] = inst->no.write;    
+    machine->tape.data[machine->head] = inst->no.write;    
     if(machine->head == 0 && inst->no.dir < 0) return inst_count;    
     machine->head += inst->no.dir;    
+    if(machine->head > machine->tape.count) machine->tape.count = machine->head;
     
     return inst->no.next;       
 }
     
 void machine_print(Machine *machine) {
     printf("head: %zu, ", machine->head);
-    for(size_t i = 0; i < machine->size; i++) {
-        if(i != machine->size-1)
-            printf("%d -> ", machine->data[i]);
+    for(size_t i = 0; i < machine->tape.count; i++) {
+        if(i != machine->tape.count-1)
+            printf("%d -> ", machine->tape.data[i]);
         else
-            printf("%d\n", machine->data[i]);        
+            printf("%d\n", machine->tape.data[i]);        
     }
 }
 
@@ -73,14 +87,16 @@ int main(int argc, char **argv) {
     Program program = {0};
     Machine machine = {0};
     if(argc == 1) {
-        machine.size = 3;
-        machine.data = malloc(sizeof(bool)*machine.size);                
-        machine_randomize(&machine);
+        machine.tape.capacity = 3;
+        machine.tape.count = machine.tape.capacity;        
+        machine.tape.data = malloc(sizeof(bool)*machine.tape.capacity);                
+        tape_randomize(&machine.tape);
     } else {
-        machine.size = strlen(argv[1]);
-        machine.data = malloc(sizeof(bool)*machine.size);        
-        for(size_t i = 0; i < machine.size; i++) {
-            machine.data[i] = argv[1][i] - '0';
+        machine.tape.capacity = strlen(argv[1]);
+        machine.tape.count = machine.tape.capacity;
+        machine.tape.data = malloc(sizeof(bool)*machine.tape.capacity);        
+        for(size_t i = 0; i < machine.tape.capacity; i++) {
+            machine.tape.data[i] = argv[1][i] - '0';
         }
     }
     
