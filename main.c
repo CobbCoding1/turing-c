@@ -62,15 +62,17 @@ size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
     for(size_t i = 0; i < NUM_STATES; i++) {
         if(machine->tape.data[machine->head] == inst->value[i].expected) {    
             machine->tape.data[machine->head] = inst->value[i].write;
-            if(machine->head == 0 && inst->value[i].dir < 0) return inst_count;
+            if(machine->head == 0 && inst->value[i].dir < 0) {
+                fprintf(stderr, "out of bounds!\n");
+                exit(1);
+            }
             machine->head += inst->value[i].dir;
             if(machine->head > machine->tape.count) machine->tape.count = machine->head;        
             
             return inst->value[i].next;
         }
     }
-    fprintf(stderr, "value was not in expected range\n");
-    exit(1);
+    return inst_count;
 }
     
 void machine_print(Machine *machine) {
@@ -99,13 +101,21 @@ int main(int argc, char **argv) {
             machine.tape.data[i] = argv[1][i] - '0';
         }
     }
+    machine.head = machine.tape.capacity/2;
     
     program.machine = &machine;            
     Instruction insts[] = {
         {{
-            {0, 1, RIGHT, 2},
-            {1, 0, RIGHT, 0},
-            {2, 1, RIGHT, 0},                    
+            {0, 1, RIGHT, 1},
+            {1, 1, LEFT, 2},
+        }},
+        {{
+            {0, 1, LEFT, 0},
+            {1, 1, RIGHT, 1},
+        }},
+        {{
+            {0, 1, LEFT, 1},
+            {1, 1, STAY, 3},                                    
         }},
         {{{0}}},
     };
