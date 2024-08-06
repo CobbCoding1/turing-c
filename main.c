@@ -92,7 +92,6 @@ size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
     }
         
     for(size_t i = 0; i < NUM_STATES; i++) {
-		//if(i > 3) break;
         if(machine->tape.data[machine->head] == inst->value[i].expected) {    
 			if(inst->value[i].dir == HALT) return inst_count;
             machine->tape.data[machine->head] = inst->value[i].write;
@@ -195,8 +194,9 @@ int main(int argc, char **argv) {
 			state.next = get_number(data, &i);
 			i++;			
 			inst.value[cur++] = state;
-			if((size_t)data[i] != state.symbol) {
-				i--;	
+			size_t start = i;
+			if(get_number(data, &i) != state.symbol) {
+				i = start-1;	
 				break;
 			}
 		}
