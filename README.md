@@ -3,5 +3,5 @@
 ## Usage
 ```sh
 ./build.sh
-./main <optional starting tape>
+./main <file.turing>
 ```
