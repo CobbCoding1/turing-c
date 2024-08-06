@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <ctype.h>
 #include <assert.h>
 #include <time.h>
 
@@ -82,14 +83,16 @@ size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
     if(machine->head >= machine->tape.capacity) {
         Tape tape = {0};
         tape.capacity = machine->tape.capacity*2;
-        tape.data = calloc(tape.capacity, sizeof(*machine->tape.data));
+        tape.data = malloc(tape.capacity*sizeof(*machine->tape.data));
+		tape.count = machine->tape.count;
+		memset(tape.data, B, sizeof(char)*tape.capacity);
         memcpy(tape.data, machine->tape.data, sizeof(*machine->tape.data)*machine->tape.capacity);
         free(machine->tape.data);
         machine->tape = tape;
     }
         
     for(size_t i = 0; i < NUM_STATES; i++) {
-		if(i > 3) break;
+		//if(i > 3) break;
         if(machine->tape.data[machine->head] == inst->value[i].expected) {    
 			if(inst->value[i].dir == HALT) return inst_count;
             machine->tape.data[machine->head] = inst->value[i].write;
@@ -123,9 +126,16 @@ void insts_print(Instructions insts) {
 		printf("%zu %c %c %d %zu\n", value.symbol, value.expected, value.write, value.dir, value.next);
 	}
 }
+
+void print_usage(char *program, char *error) {
+	fprintf(stderr, "ERROR: %s\n", error);
+	fprintf(stderr, "USAGE: %s <input_file.turing>\n", program);
+	exit(1);
+}
 	
-char *read_from_file(char *filename) {
+char *read_from_file(char *filename, char *program) {
 	FILE *file = fopen(filename, "r");
+	if(file == NULL) print_usage(program, "Cannot open file");
 		
 	fseek(file, 0, SEEK_END);
 	size_t len = ftell(file);
@@ -134,18 +144,34 @@ char *read_from_file(char *filename) {
 	char *data = calloc(len+1, sizeof(char));
 	fread(data, sizeof(char), len, file);
 	
+	fclose(file);
+	
 	return data;
+}
+	
+size_t get_number(char *data, size_t *index) {
+	char num[128] = {0};
+	size_t num_s = 0;
+	while(data[*index] != '\0' && isdigit(data[*index])) {
+		num[num_s++] = data[*index];
+		(*index)++;
+	}
+	return atol(num);
 }
 
 int main(int argc, char **argv) {
-	char *data = read_from_file(argv[1]);
+	char *filename = argv[0];
+	if(argc < 2) {
+		print_usage(filename, "Not enough arguments");
+	}
+	char *data = read_from_file(argv[1], filename);
 	Instructions insts = {0};
 	for(size_t i = 0; data[i] != '\0'; i++) {
 		Instruction inst = {0};
 		size_t cur = 0;
 		while(true) {
 			State state = {0};
-			state.symbol = data[i++];
+			state.symbol = get_number(data, &i);
 			i++;
 			state.expected = data[i++];
 			i++;
@@ -166,9 +192,9 @@ int main(int argc, char **argv) {
 					exit(1);
 			}
 			i++;
-			state.next = data[i++] - '0';
+			state.next = get_number(data, &i);
+			i++;			
 			inst.value[cur++] = state;
-			i++;
 			if((size_t)data[i] != state.symbol) {
 				i--;	
 				break;
@@ -198,9 +224,11 @@ int main(int argc, char **argv) {
 	
 	//insts_print(insts);
     
+	size_t count = 0;
     while(program.cur <= program.insts.count-1) {
-	    machine_print(program.machine);        		
         program.cur = machine_execute(program.machine, &program.insts.data[program.cur], program.insts.count);    
+		count++;
     }    
+    machine_print(program.machine);			
     return 0;
 }
