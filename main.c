@@ -78,14 +78,23 @@ void tape_default(Tape *tape) {
         tape->data[i] = B;
     }
 }
+	
+void machine_free(Machine *machine) {
+	free(machine->tape.data);	
+}
+
+Tape tape_init(size_t capacity, size_t count) {
+	Tape tape = {0};
+	tape.count = count;
+	tape.capacity = capacity;
+	tape.data = malloc(sizeof(unsigned char)*tape.capacity);
+	memset(tape.data, B, sizeof(char)*tape.capacity);	
+	return tape;
+}
     
 size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
     if(machine->head >= machine->tape.capacity) {
-        Tape tape = {0};
-        tape.capacity = machine->tape.capacity*2;
-        tape.data = malloc(tape.capacity*sizeof(*machine->tape.data));
-		tape.count = machine->tape.count;
-		memset(tape.data, B, sizeof(char)*tape.capacity);
+        Tape tape = tape_init(machine->tape.capacity*2, machine->tape.count);
         memcpy(tape.data, machine->tape.data, sizeof(*machine->tape.data)*machine->tape.capacity);
         free(machine->tape.data);
         machine->tape = tape;
@@ -132,7 +141,7 @@ void print_usage(char *program, char *error) {
 	exit(1);
 }
 	
-char *read_from_file(char *filename, char *program) {
+char *read_from_file(char *filename, char *program, size_t *data_s) {
 	FILE *file = fopen(filename, "r");
 	if(file == NULL) print_usage(program, "Cannot open file");
 		
@@ -144,58 +153,59 @@ char *read_from_file(char *filename, char *program) {
 	fread(data, sizeof(char), len, file);
 	
 	fclose(file);
+	*data_s = len;
 	
 	return data;
 }
 	
-size_t get_number(char *data, size_t *index) {
+size_t get_number(char *data, size_t data_s, size_t *index) {
 	char num[128] = {0};
 	size_t num_s = 0;
-	while(data[*index] != '\0' && isdigit(data[*index])) {
+	while(*index < data_s && isdigit(data[*index])) {
 		num[num_s++] = data[*index];
 		(*index)++;
 	}
 	return atol(num);
 }
+	
+Direction get_dir(char c) {
+	switch(c) {
+		case 'R': return RIGHT;
+		case 'L': return LEFT;
+		case 'H': return HALT;
+		default:
+			fprintf(stderr, "error: expected R, L, or H for the direction but found %d\n", c);
+			exit(1);
+	}
+}
+	
 
 int main(int argc, char **argv) {
 	char *filename = argv[0];
 	if(argc < 2) {
 		print_usage(filename, "Not enough arguments");
 	}
-	char *data = read_from_file(argv[1], filename);
+	size_t data_s = 0;
+	char *data = read_from_file(argv[1], filename, &data_s);
 	Instructions insts = {0};
-	for(size_t i = 0; data[i] != '\0'; i++) {
+	for(size_t i = 0; i < data_s; i++) {
 		Instruction inst = {0};
 		size_t cur = 0;
 		while(true) {
 			State state = {0};
-			state.symbol = get_number(data, &i);
+			state.symbol = get_number(data, data_s, &i);
 			i++;
 			state.expected = data[i++];
 			i++;
 			state.write = data[i++];
 			i++;
-			switch(data[i++]) {
-				case 'R':
-					state.dir = RIGHT;
-					break;
-				case 'L':
-					state.dir = LEFT;
-					break;
-				case 'H':
-					state.dir = HALT;
-					break;
-				default:
-					fprintf(stderr, "error: expected R, L, or H for the direction but found %d\n", data[i]);
-					exit(1);
-			}
+			state.dir = get_dir(data[i++]);
 			i++;
-			state.next = get_number(data, &i);
+			state.next = get_number(data, data_s, &i);
 			i++;			
 			inst.value[cur++] = state;
 			size_t start = i;
-			if(get_number(data, &i) != state.symbol) {
+			if(get_number(data, data_s, &i) != state.symbol) {
 				i = start-1;	
 				break;
 			}
@@ -230,5 +240,8 @@ int main(int argc, char **argv) {
 		count++;
     }    
     machine_print(program.machine);			
+	machine_free(program.machine);
+	free(insts.data);
+	free(data);
     return 0;
 }
