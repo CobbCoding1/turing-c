@@ -8,6 +8,7 @@
 
 #define NUM_STATES 256
 #define DATA_START_CAPACITY 128
+#define TAPE_START_CAPACITY 32
 
 #define DA_APPEND(da, item) do {                                                       		\
 	    if ((da)->count >= (da)->capacity) {                                               	\
@@ -73,10 +74,14 @@ void tape_randomize(Tape *tape) {
 }
 	
 void tape_default(Tape *tape) {
-    srand(time(NULL));
-    for(size_t i = 0; i < tape->capacity; i++) {
-        tape->data[i] = B;
-    }
+	memset(tape->data, B, sizeof(char)*tape->capacity);
+}
+	
+void tape_set(Tape *tape, char *value) {
+	for(size_t i = 0; i < tape->count; i++) {
+		if(isdigit(value[i])) tape->data[i] = value[i] - '0';
+		else tape->data[i] = value[i];
+	}
 }
 	
 void machine_free(Machine *machine) {
@@ -88,11 +93,12 @@ Tape tape_init(size_t capacity, size_t count) {
 	tape.count = count;
 	tape.capacity = capacity;
 	tape.data = malloc(sizeof(unsigned char)*tape.capacity);
-	memset(tape.data, B, sizeof(char)*tape.capacity);	
+	tape_default(&tape);
 	return tape;
 }
     
 size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
+	// expand tape if necessary
     if(machine->head >= machine->tape.capacity) {
         Tape tape = tape_init(machine->tape.capacity*2, machine->tape.count);
         memcpy(tape.data, machine->tape.data, sizeof(*machine->tape.data)*machine->tape.capacity);
@@ -102,20 +108,25 @@ size_t machine_execute(Machine *machine, Instruction *inst, size_t inst_count) {
         
     for(size_t i = 0; i < NUM_STATES; i++) {
         if(machine->tape.data[machine->head] == inst->value[i].expected) {    
+			// if current instruction is HALT, then return inst_count which triggers an exit
 			if(inst->value[i].dir == HALT) return inst_count;
+				
             machine->tape.data[machine->head] = inst->value[i].write;
+				
+			// check left boundary to ensure there is no indexing issues
             if(machine->head == 0 && inst->value[i].dir < 0) {
                 fprintf(stderr, "out of bounds!\n");
                 exit(1);
             }
+			// move the head the proper direction (-1, 0, or 1)
             machine->head += inst->value[i].dir;
             if(machine->head > machine->tape.count) machine->tape.count = machine->head;        
             
             return inst->value[i].next;
         }
     }
-	assert(false && "WHAT THE HECK");
-    return inst_count;
+	fprintf(stderr, "ERROR: Not all cases handled in states\n");
+	exit(1);
 }
     
 void machine_print(Machine *machine) {
@@ -131,13 +142,14 @@ void machine_print(Machine *machine) {
 void insts_print(Instructions insts) {
 	for(size_t i = 0; i < insts.count; i++) {
 		State value = insts.data[i].value[0];
-		printf("%zu %c %c %d %zu\n", value.symbol, value.expected, value.write, value.dir, value.next);
+		printf("symbol: %zu expected: %c write: %c dir: %d next: %zu\n", 
+				value.symbol, value.expected, value.write, value.dir, value.next);
 	}
 }
 
 void print_usage(char *program, char *error) {
 	fprintf(stderr, "ERROR: %s\n", error);
-	fprintf(stderr, "USAGE: %s <input_file.turing>\n", program);
+	fprintf(stderr, "USAGE: %s <input_file.turing> <optional starting tape>\n", program);
 	exit(1);
 }
 	
@@ -159,7 +171,7 @@ char *read_from_file(char *filename, char *program, size_t *data_s) {
 }
 	
 size_t get_number(char *data, size_t data_s, size_t *index) {
-	char num[128] = {0};
+	char num[256] = {0};
 	size_t num_s = 0;
 	while(*index < data_s && isdigit(data[*index])) {
 		num[num_s++] = data[*index];
@@ -168,25 +180,18 @@ size_t get_number(char *data, size_t data_s, size_t *index) {
 	return atol(num);
 }
 	
-Direction get_dir(char c) {
+Direction get_dir(char c, size_t index) {
 	switch(c) {
 		case 'R': return RIGHT;
 		case 'L': return LEFT;
 		case 'H': return HALT;
 		default:
-			fprintf(stderr, "error: expected R, L, or H for the direction but found %d\n", c);
+			fprintf(stderr, "error: expected R, L, or H for the direction but found %c at %zu\n", c, index);
 			exit(1);
 	}
 }
 	
-
-int main(int argc, char **argv) {
-	char *filename = argv[0];
-	if(argc < 2) {
-		print_usage(filename, "Not enough arguments");
-	}
-	size_t data_s = 0;
-	char *data = read_from_file(argv[1], filename, &data_s);
+Instructions get_insts(char *data, size_t data_s) {
 	Instructions insts = {0};
 	for(size_t i = 0; i < data_s; i++) {
 		Instruction inst = {0};
@@ -199,8 +204,8 @@ int main(int argc, char **argv) {
 			i++;
 			state.write = data[i++];
 			i++;
-			state.dir = get_dir(data[i++]);
-			i++;
+			state.dir = get_dir(data[i], i);
+			i += 2;
 			state.next = get_number(data, data_s, &i);
 			i++;			
 			inst.value[cur++] = state;
@@ -212,36 +217,53 @@ int main(int argc, char **argv) {
 		}
 		DA_APPEND(&insts, inst);		
 	}
-    Program program = {0};
-    Machine machine = {0};
-    if(argc == 1) {
-        machine.tape.capacity = 4;
-        machine.tape.count = machine.tape.capacity;        
-        machine.tape.data = malloc(sizeof(unsigned char)*machine.tape.capacity);                
+	return insts;
+}
+	
+
+int main(int argc, char **argv) {
+	char *prog_name = argv[0];
+	if(argc < 2) {
+		print_usage(prog_name, "Not enough arguments");
+	}
+		
+	size_t data_s = 0;
+	char *data = read_from_file(argv[1], prog_name, &data_s);
+	
+	Machine machine = {0};
+	Program program = {0};
+	Instructions insts = get_insts(data, data_s);
+	
+	if(argc <= 2) {	
+		// set the defaults if no tape is passed
+	    machine.tape.capacity = TAPE_START_CAPACITY;
+	    machine.tape.count = machine.tape.capacity;        
+	    machine.tape.data = malloc(sizeof(unsigned char)*machine.tape.capacity);                
 		tape_default(&machine.tape);
-    } else {
-        machine.tape.capacity = strlen(argv[1]);
-        machine.tape.count = machine.tape.capacity;
-        machine.tape.data = malloc(sizeof(unsigned char)*machine.tape.capacity);        
-        for(size_t i = 0; i < machine.tape.capacity; i++) {
-            machine.tape.data[i] = argv[1][i];
-        }
+	} else {
+		// set value to user arg if passed
+		size_t tape_len = strlen(argv[2]);
+		machine.tape.capacity = tape_len*2;
+		machine.tape.count = tape_len;
+	    machine.tape.data = malloc(sizeof(unsigned char)*machine.tape.capacity);                		
 		tape_default(&machine.tape);		
-    }
+		tape_set(&machine.tape, argv[2]);
+	}
     
     program.machine = &machine;            
     program.insts = insts;    
 	
 	//insts_print(insts);
     
-	size_t count = 0;
     while(program.cur <= program.insts.count-1) {
         program.cur = machine_execute(program.machine, &program.insts.data[program.cur], program.insts.count);    
-		count++;
     }    
+		
+	// free the memory
     machine_print(program.machine);			
 	machine_free(program.machine);
 	free(insts.data);
 	free(data);
+	
     return 0;
 }
